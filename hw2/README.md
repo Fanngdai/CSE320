@@ -1,4 +1,4 @@
-# Homework 2 Debugging and Fixing - CSE 320 - Spring 2018
+# Homework 2 Debugging and Fixing - CSE 320 - Fall 2018
 #### Professor Eugene Stark
 
 ### **Due Date: Friday 10/5/2018 @ 11:59pm**
@@ -237,4 +237,3 @@ repository are pushed prior to submission.
 This homework's tag is: `hw2`
 
 	    $ git submit hw2
-
