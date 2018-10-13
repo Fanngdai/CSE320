@@ -1,7 +1,7 @@
 # CSE320
 Programming assignments for programming and essential concepts of operating systems, compilers, concurrency, and performance analysis course. Spring18 coming soon.
 
-Taken Fall 2018.
+Taken **Fall 2018** at **Stony Brook University**.
 
 * **hw0**
     * Intro to _linux_
