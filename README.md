@@ -43,4 +43,3 @@ my submission. Such permission is best requested and obtained by E-mail to
 cse320@cs.stonybrook.edu
 ================================================================================
 Signed:
-Wed Jan 17 01:46:41 UTC 2018 - FANNG DAI
