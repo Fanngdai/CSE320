@@ -1,16 +1,17 @@
-# Homework 1 - CSE 320 - Spring 2018
+# Homework 1 - CSE 320 - Fall 2018
 #### Professor Eugene Stark
 
-### **Due Date: Sunday 02/11/2018 @ 11:59pm**
+### **Due Date: Friday 09/21/2018 @ 11:59pm**
 
 **Read the entire doc before you start**
 
 ## Introduction
 
-In this assignment, you will write a command line utility to translate MIPS
-machine code between binary and human-readable mnemonic form.
+In this assignment, you will write a command line utility to perform certain
+transformations on audio files encoded in Sun audio (`.au`) format.
 The goal of this homework is to familiarize yourself with C programming,
-with a focus on input/output, strings in C, and the use of pointers.
+with a focus on input/output, strings in C, bitwise manipulations,
+and the use of pointers.
 
 You **MUST** write your helper functions in a file separate from `main.c`. The
 `main.c` file **MUST ONLY** contain `#include`s, local `#define`s and the `main`
@@ -18,6 +19,11 @@ function. This is the only requirement for project structure. Beyond this, you
 may have as many or as few additional `.c` files in the `src` directory as you
 wish. Also, you may declare as many or as few headers as you wish. In this
 document, we use `hw1.c` as our example file containing helper functions.
+
+> :scream: Array indexing (**'A[]'**) is not allowed in this assignment. You
+> **MUST USE** pointer arithmetic instead. All necessary arrays are declared in
+> the `const.h` header file. You **MUST USE** these arrays. **DO NOT** create
+> your own arrays. We **WILL** check for this.
 
 # Getting Started
 
@@ -31,7 +37,7 @@ repo will be the file that is preserved.
 To merge, use this command:
 
 ```
-git merge -m "Merging HW1_CODE" HW1_CODE/master --strategy-option theirs
+git merge -m "Merging HW1_CODE" HW1_CODE/master --strategy-option=theirs
 ```
 
 Here is the structure of the base code:
@@ -39,35 +45,30 @@ Here is the structure of the base code:
 <pre>
 hw1
 ├── include
+│   ├── audio.h
 │   ├── const.h
 │   ├── debug.h
 │   ├── hw1.h
-│   └── instruction.h
+│   └── myrand.h
 ├── Makefile
 ├── rsrc
-│   ├── bcond.asm
-│   ├── bcond.bin
-│   ├── examples.asm
-│   ├── examples.bin
-│   ├── jump.asm
-│   ├── jump.bin
-│   ├── matmult.asm
-│   ├── matmult.bin
-│   ├── typei.asm
-│   ├── typei.bin
-│   ├── typer.asm
-│   └── typer.bin
+│   ├── sample.au
+│   ├── sample_c_DeadBeef.au
+│   ├── sample_d_f2.au
+│   ├── sample_u_f2.au
+│   ├── triangle_1kHz_2ch_8bit.au
+│   └── triangle_1kHz_2ch_8bit_d_f10.au
 ├── src
 │   ├── hw1.c
-│   ├── instr_table.c
-│   └── main.c
+│   ├── main.c
+│   └── myrand.c
 └── tests
     └── hw1_tests.c
 </pre>
 
-> :nerd: Reference for pointers: [http://beej.us/guide/bgc/output/html/multipage/pointers.html](http://beej.us/guide/bgc/output/html/multipage/pointers.html]).
+> :nerd: Reference for pointers: [https://beej.us/guide/bgc/html/multi/pointers.html](https://beej.us/guide/bgc/html/multi/pointers.html).
 
-> :nerd: Reference for command line arguments: [http://beej.us/guide/bgc/output/html/multipage/morestuff.html#clargs](http://beej.us/guide/bgc/output/html/multipage/morestuff.html#clargs).
+> :nerd: Reference for command line arguments: [https://beej.us/guide/bgc/html/multi/morestuff.html#clargs](https://beej.us/guide/bgc/html/multi/morestuff.html#clargs).
 
 **Note**: All commands from here on are assumed to be run from the `hw1` directory.
 
@@ -98,16 +99,21 @@ program via the command line. Your program will support the following flags:
 `EXIT_FAILURE` return code
 
 - If the `-h` flag is provided, you will display the usage for the program and
-  exit with an `EXIT_SUCCESS` return code
+  exit with an `EXIT_SUCCESS` return code.
 
-- If the `-a` flag is provided, you will perform text-to-binary conversion
-(i.e. "assembly"), reading text from `stdin` and writing binary to `stdout`.
+- If the `-u` flag is provided, you will perform "speed-up" conversion
+  (aka "downsampling" or "decimation"); reading audio data from `stdin`
+  and writing audio data to `stdout`.
 
-- If the `-d` flag is provided, you will perform binary-to-text conversion
-(i.e. "disassembly"), reading binary from `stdin` and writing text to `stdout`.
+- If the `-d` flag is provided, you will perform "slow_down" conversion
+  (aka "upsampling" or "interpolation"); reading audio data from `stdin`
+  and writing audio data to `stdout`.
 
-> The `-a` and `-d` flags are not allowed to be used in combination with each
-> other
+- If the `-c` flag is provided, you will perform "crypt" conversion;
+  reading audio data from `stdin` and writing audio data to `stdout`.
+
+> If the `-h` flag is *not* specified, then exactly one of `-u`, `-d`, or `-c`
+> must be specified.
 
 > :nerd: `EXIT_SUCCESS` and `EXIT_FAILURE` are macros defined in `<stdlib.h>` which
 > represent success and failure return codes respectively.
@@ -116,44 +122,46 @@ program via the command line. Your program will support the following flags:
 > execution for all programs and do not need to be reopened.
 
 Some of these operations will also need other command line arguments which are
-described in each part of the assignment. The two usages for this program are:
+described in each part of the assignment. The three usages for this program are:
 
 <pre>
-usage: ./hw1 -h [any other number or type of arguments]
-usage: bin/hw1 [-h] -a|-d [-b BASEADDR] [-e ENDIANNESS]
-    -a       Assemble: convert mnemonics to binary code
-    -d       Disassemble: convert binary code to mnemonics
-             Additional parameters: [-b BASEADDR] [-e ENDIANNESS]
-                -b            BASEADDR is the starting memory address for the code
-                              It must be a hexadecimal number of 8 digits or less
-                -e            ENDIANNESS specifies the byte order of the binary code
-                              It must be a single character:
-                                 b for big-endian, or
-                                 l for little-endian
-    -h       Display this help menu.
+Usage: bin/audible -h [any other number or type of arguments]
+    -h       Help: displays this help menu
+Usage: bin/audible -u|-d [-f FACTOR] [-p]
+	-u       Speed Up: increase playback speed by deleting samples
+    -d       Slow Down: decreate playback speed by inserting interpolated samples
+             Optional additional parameters:
+                -f           FACTOR is an integer factor for speed up or slow down
+                -p           Preserve input annotation without modification.
+Usage: bin/audible -c [-k KEY] [-p]
+    -c       "(En/De)Crypt" the audio samples, using secret key KEY
+             Required additional parameter:
+                -k           KEY is a secret key
+	         Optional additional parameter:
+                -p           Preserve input annotation without modification.
 </pre>
 
 A valid invocation of the program implies that the following hold about
 the command-line arguments:
 
-- All positional arguments (`-a|-d`) come before any optional
-arguments (`-b and -e`). The optional arguments may come in any order
+- All positional arguments (`-h|-u|-d|-c`) come before any optional
+arguments (`-f`, `-k`, and `-p`). The optional arguments may come in any order
 after the positional ones.
 
 - If the `-h` flag is provided, it is the first positional argument after
-the program executable.
+the program name.
 
 - If an option requires a parameter, the corresponding parameter must be provided
-(e.g. `-e` must always be followed by an ENDIANNESS specification).
+(e.g. `-f` must always be followed by a FACTOR specification).
 
-- If `-b` is given, the BASEADDR argument will be given as a hexadecimal
-number in which in addition to the digits ('0'-'9) either upper-case letters
-('A'-'F') or lower-case letters ('a'-'f') may be used, in any combination.
+    - If `-f` is given, the FACTOR argument will be given as a decimal integer in
+    the range [1, 1024].
 
-- If `-e` is given, then the ENDIANNESS argument will be a single word
-(i.e. will have no whitespace).
+    - If `-k` is given, the KEY argument must be a hexadecimal integer with at most 8
+      digits.  Either upper-case letters (`'A'`-`'F'`) or lower-case letters (`'a'`-`'f'`)
+      for the digits beyond 9.
 
-> :scream: You may only use `argc` and `argv` for argument parsing and
+> :scream: You may use only "raw" `argc` and `argv` for argument parsing and
 > validation. Using any libraries that parse command line arguments (e.g.
 > `getopt`) is prohibited.
 
@@ -167,20 +175,20 @@ number in which in addition to the digits ('0'-'9) either upper-case letters
 For example, the following are a subset of the possible valid argument
 combinations:
 
-- `$ bin/hw1 -h ...`
-- `$ bin/hw1 -a`
-- `$ bin/hw1 -a -e b`
-- `$ bin/hw1 -d -b D000d000 -e l`
+- `$ bin/audible -h ...`
+- `$ bin/audible -u -f 2`
+- `$ bin/audible -c -k DeadBeef`
 
-Some examples of invalid orderings would be:
+Some examples of invalid combinations would be:
 
-- `$ bin/hw1 -e b -d`
-- `$ bin/hw1 -b D000d000 -a -e b`
+- `$ bin/audible -u -d -f 3`
+- `$ bin/audible -f 3 -u`
+- `$ bin/audible -c -k DeadBeef -f 3`
 
 > :scream: The `...` means that all arguments, if any, are to be ignored; e.g.
-> the usage `bin/hw1 -h -a -b D00D000 -e b` is equivalent to `bin/hw1 -h`
+> the usage `bin/audible -h -x -y D00D000 -z` is equivalent to `bin/audible -h`
 
-**NOTE:** The makefile compiles the `hw1` executable into the `bin` folder.
+**NOTE:** The `make` command compiles the `audible` executable into the `bin` folder.
 Assume all commands in this doc are run from from the `hw1` directory of your
 repo.
 
@@ -221,58 +229,69 @@ This includes, but is not limited to:
 
 - Invalid ordering of arguments
 
-- A missing parameter to an option that requires one (e.g. `-e` with no
-  ENDIANNESS specification).
+- A missing parameter to an option that requires one (e.g. `-c` with no
+  KEY specification).
 
-- Invalid base address (if one is specified).  A base address is invalid
-if it contains characters other than the digits ('0'-'9), upper-case
-letters ('A'-'F'), and lower-case letters ('a'-'f'), if it is more than
-8 digits in length, or if it is not a multiple of 4096
-(i.e. the twelve least-significant bits of its value are not all zero).
+- Invalid `FACTOR` (if one is specified).  A `FACTOR` is invalid if it
+contains characters other than the digits ('0'-'9), or if it denotes a
+value not in the range [1, 1024].
 
-- Invalid endianness (if one is specified).  An endiannness is invalid
-if either it does not consist of a single character or that single character
-is not either 'b' or 'l'.
+- Invalid `KEY` (if one is specified).  A `KEY` is invalid if it is more than
+eight characters long or if it contains characters other than digits in
+the range '0' - '9', lower-case letters in the range `a` - `f`, or upper-case
+letters in the range `A` - `F`
 
-The `global_options` variable of type `unsigned int` is used to record the mode
-of operation (i.e. assemble/disassemble) of the program, as well as any selected flags
-and base address.  This is done as follows:
+The `global_options` variable of type `unsigned long` is used to record the mode
+of operation (i.e. speed up/slow down/crypt) of the program, as well as any
+selected factor and secret key.  This is done as follows:
 
-- If the `-h` flag is specified, the least significant bit is 1
+- If the `-h` flag is specified, the most significant bit (bit 63) is 1.
 
-- The second least significant bit is 0 if `-a` is passed (i.e. the user wants
-assembly mode) and 1 if `-d` is passed (i.e. the user wants disassembly mode)
+- The second-most-significant bit (bit 62) is 1 if `-u` is passed
+(i.e. the user wants speed-up mode).
 
-- The third least signficant bit is 1 if `-e b` is passed (i.e. the user wants
-big-endian byte ordering) and 0 otherwise.
+- The third-most-significant bit (bit 61) is 1 if `-d` is passed
+(i.e. the user wants slow-down mode).
 
-- If the `-b` option was specified, then the base address is given by taking
-the value of `global_options` and clearing the 12 least significant bits.
-If the `-b` option was not specified, then the 20 most significant bits of
-`global_options` should all be 0 (i.e. the default base address is 0).
+- The fourth-most-significant bit (bit 60) is 1 if `-c` is passed
+(i.e. the user wants crypt mode).
 
-If `validargs` returns 0 indicating failure, your program must print
+- The fifth-most-significant bit (bit 59) is 1 if `-p` is passed
+(i.e. the user wants annotations left unmodified).
+
+- If the `-f` option was specified, then the factor (minus one) is recorded
+in the seventh- through sixteenth-most-significant bits (bits 57 - 48)
+If the `-f` option was not specified, then these bits of `global_options`
+should all be zero (i.e. the default factor is 1).
+
+- If the `-k` option was specified, then the secret key is recorded in the
+thirty-two least-significant bits (bits 31 - 0).
+If the `-k` option was not specified, then these bits of `global_options`
+should all be zero.
+
+If `validargs` returns 0 indicating failure, your program must call
 `USAGE(program_name, return_code)` and return `EXIT_FAILURE`.
 **Once again, `validargs` must always return, and therefore it must not
 call the `USAGE(program_name, return_code)` macro itself.
 That should be done in `main`.**
 
-If `validargs` sets the least significant bit of `global_options` to 1
-(i.e. the `-h` flag was passed), your program must print `USAGE(program_name,
+If `validargs` sets the most-significant bit of `global_options` to 1
+(i.e. the `-h` flag was passed), your program must call `USAGE(program_name,
 return_code)` and return `EXIT_SUCCESS`.
 
 > :nerd: The `USAGE(program_name, return_code)` macro is already defined for you
 > in `const.h`.
 
-If validargs returns 1 and the least significant bit of `global_options` is 0,
-your program must perform assembly or disassembly accordingly and return
-`EXIT_SUCCESS` upon successful completion, or `EXIT_FAILURE` in case of an error.
+If validargs returns 1, then your program must read audio data from `stdin`,
+transforming it as specified by the value of `global_options`, and writing the
+result to `stdout`.  Upon successful completion, your program should exit
+with exit status `EXIT_SUCCESS`; otherwise, in case of an error it should
+exit with exit status `EXIT_FAILURE`.
 
-If `-b` is provided, you must check to confirm that the specified base address
+If `-f` is provided, you must check to confirm that the specified factor
 is valid.
 
-If `-e` is provided, you must check that the specified endianness is either
-the single character `b` or the single character `l`.
+If `-k` is provided, you must check that the specified key is valid.
 
 > :nerd: Remember `EXIT_SUCCESS` and `EXIT_FAILURE` are defined in `<stdlib.h>`.
 > Also note, `EXIT_SUCCESS` is 0 and `EXIT_FAILURE` is 1.
@@ -288,372 +307,476 @@ Each input is a bash command that can be used to run the program.
 In the examples, all don't care bits (bits 3-11, where the least significant
 bit is numbered 0 and the most significant bit is numbered 31) have been set to 0.
 
-- Input: `bin/hw1 -h`.  Setting: 0x1 (`help` bit is set. All other bits are
-don't cares.)
+- Input: `bin/audible -h`.  Setting: 0x8000000000000000 (`help` bit is set.
+All other bits are don't cares.)
 
-- Input: `bin/hw1 -d`.  Setting: 0x2 (`disassemble` bit is set).
+- Input: `bin/audible -u`.  Setting: 0x4000000000000000 (`speed up` bit is set;
+`factor` bits are zero, representing `factor=1`).
 
-- Input: `bin/hw1 -d -e b`.  Setting: 0x6 (`disassemble` and
-`big endian` bits are set).
+- Input: `bin/audible -d -f 2`.  Setting: 0x2001000000000000 (`slow down` bit is set;
+`factor` bits are 0x001, representing `factor=2`).
 
-- Input: `bin/hw1 -d -e b -b BaB000`.  Setting: 0xBAB006 (`disassemble` and
-`big endian` bits are set, base address is 0xBAB000).
+- Input: `bin/audible -c -k 5b5b5b5b`.  Setting: 0x100000005B5B5B5B (`crypt` bit is set;
+`key` bits are 0x5b5b5b5b).
 
-- Input: `bin/hw1 -e b -d -b BaB000`.  Setting: 0x0. This is an error
-case because the argument ordering is invalid (`-e` is before `-d`).
+- Input: `bin/audible -k 0 -c`.  Setting: 0x0. This is an error
+case because the specified argument ordering is invalid (`-k` is before `-c`).
 In this case `validargs` returns 0, leaving `global_options` unset.
 
-# Part 2: MIPS Instruction Format
+# Part 2: Digital Audio and the Sun Audio File Format
 
-Presumably you learned something about the MIPS process and its instruction set
-in CSE 220.  If you need to, review the materials used for that course.
-You might also find useful information via
-[this link](https://en.wikipedia.org/wiki/MIPS_architecture#Instruction_formats) or
-[this one](https://www.cs.cornell.edu/courses/cs3410/2008fa/MIPS_Vol2.pdf).
-Below we summarize the information about the MIPS instruction format that will
-be needed to do the assignment.
+## Digital Audio
 
-Each MIPS instruction consists of one 32-bit word.  We will number the bits
-from 0 (least significant bit) to 31 (most significant bit) and we will think
-of bit 31 as being "leftmost".  To indicate a particular bit field from
-the instruction word we will use a notation like 31:26, which indicates
-bits 31 down to 26; that is, the 6 "leftmost", or most significant bits.
+To understand the Sun audio file format and the transformations you
+are to implement, you need to have some basic knowledge of how audio
+is represented in digital form.  An analog audio signal is a continuous
+*waveform*; *i.e.* a continuous function that maps
+each point in an interval of real time to an instantaneous
+*amplitude* which is a real number.  In order to represent
+such a signal digitally, the interval of time is replaced by
+a equally spaced sequence of *sampling points*,
+and the audio signal is approximated by giving a *sample* of
+its amplitude at each of the sampling points.  The original real
+amplitude itself is digitized, and gets replaced by a value that can be
+represented in a finite number of bits.
+This sampling scheme is called *pulse-code modulation*, or PCM.
 
-In every MIPS instruction, bit field 31:26 is used as a 6-bit opcode.
-Most instructions are directly identified by one of the 64 possible values
-of this field, but as we will see there are some special cases.
-There are three types of MIPS instructions: R, I, and J.
-Instructions of type R take up to three registers as arguments.
-Instructions of type I take up to two registers and a 16-bit immediate value
-(obtained from the 16 least significant bits of the instruction word).
-Instructions of type J take a jump target from the 26 least signficant
-bits of the instruction word.
-The MIPS processor has 32 registers, which means that it takes 5 bits to
-specify a register.
-The registers are specified by the contents of bit fields
-25:21 (called `RS`), 20:16 (called `RT`), and 15:11 (called `RD`),
-or, in some cases, bit field 10:6.
+Typically, digital audio data will have multiple *channels*;
+*e.g.* audio intended for stereo system will have two channels:
+one for each speaker.  As the channels are independent, each channel
+requires its own individual sample at each sampling point.
+The collection of all the samples, one for each channel, at a particular
+sampling point, is called a *frame*.  The number of frames per unit
+time is called the *frame rate*.  For example, CD-quality audio signals
+have a frame rate of 44,100 frames per second (44.1KHz).
+Each sample is represented by 16 bits, and there are two samples per frame,
+representing the amplitude of the left and right channels of a stereo signal.
+Thus, each frame in a CD-quality audio signal consists of a total
+of four bytes (32 bits) of data (only the amplitudes need be
+represented explicitly, because the time interval between the samples
+is always the same).  It would thus require (10)(44,100)(4) = 1,764,000 bytes
+to represent a 10-second clip of such a signal.
 
-In the files `instruction.h` and `instr_table.c` you have been provided
-with a set of tables that can be used to decode MIPS binary instruction words.
-Rather than going through full details of the MIPS instruction format,
-we will just go through the procedure for decoding an instruction using the
-tables.
-The type `Opcode` is an enumerated type that assigns to integer values
-in the range 0 to 63 the names of MIPS instructions, and in addition defines
-names for three additional values `SPECIAL` (64), `BCOND` (65), and `ILLEGL` (66).
-`Opcode` values in the range 0 to 63 serve as indices into the
-instruction table `instrTable`.  Each entry in this table uniquely identifies
-a particular type of MIPS instruction and provides further information about it.
-Our first objective in decoding an instruction is to determine the proper
-`Opcode` value (in the discussion below we refer to this as "the Opcode"),
-thereby obtaining access to the proper entry from the instruction table.
+When digital audio signals are played, either on the computer or
+on a stereo system, the digital data is read from the storage medium
+and fed on demand to the audio output device.  At regularly spaced
+intervals corresponding to the frame rate of the signal, the audio
+output device takes each frame and presents the samples to
+*digital-to-analog converters*, one for each output channel,
+which convert the digital amplitude samples into voltage levels
+on output wires.  These voltage levels are then amplified and used
+to drive speakers.  Since each sample determines the output voltage
+on one channel over an entire sampling interval whose duration is
+the reciprocal of the sampling rate (1/44,100Hz = 22.68 microseconds
+for CD audio), if you were to look closely, say, using an oscilloscope,
+at the shape of the final waveform coming out of a digital audio
+system, you would see that it is not smooth but has a "step" shape
+(see figure below, which shows two cycles of a sine wave that has
+been sampled at a rate of 10 samples per cycle).
+However, these steps occur rapidly enough that your ear cannot
+tell the difference between this signal and a smoothly varying one.
 
-The starting point for obtaining the Opcode is the value in bits 31:26
-of the instruction word.
-This value is used as an index into `opcodeTable` and the value (of type `Opcode`)
-at that index in the table is retrieved.
+<img src="sampled_sine_wave.png">
 
-- If the value obtained from `opcodeTable` is neither `SPECIAL` nor `BCOND`,
-then it is the Opcode.
+In the digital representation of audio signals, there are several
+parameters that can be changed according to the intended application
+and details of the computer system on which the signals will be
+processed.  The most basic parameter is the frame rate.
+A higher frame rate yields a higher-quality representation of the
+audio signal, but requires a larger number of bytes to represent
+the signal.  In general, the highest frequency that can be represented
+by a digital audio signal is equal to one-half the frame rate
+(this is called the <em>Nyquist frequency</em>).
+For example, CD audio with a frame rate of 44,100Hz can represent
+audio frequencies up to 22,050Hz.  This is a higher frequency than
+your ear can detect, so when played back the original sound is
+accurately reproduced as far as your ear is concerned.
+On the other hand, for other applications like telephony for which
+high-fidelity reproduction is not as important, lower frame rates
+are used.  For example, 8000Hz is a common choice for voice signals,
+because the Nyquist frequency of 4000Hz is high enough to cover
+the voice frequencies that are necessary for speech understanding.
 
-- If the value obtained from `opcodeTable` is `SPECIAL` (this occurs when the
-value of bits 31:26 is 000000), then the value in bits 5:0 of the instruction
-word is used as an index into the table `specialTable` to obtain the Opcode.
+Another important parameter in the representation of digital
+audio signals is the number of bits per sample.
+Once again, there is a tradeoff between the fidelity of the
+representation and the amount of data required.
+As mentioned above, CD-quality audio uses 16 bits (or two bytes)
+per sample.  These 16 bits are used to represent
+(using two's complement encoding) a signed amplitude in the
+range [-32768, 32767].  This is enough that
+it is generally hard for your ear to detect the fact that the
+signal does not have a smoothly varying amplitude but rather
+"jumps" from one discrete value to the next.
+For applications that are not as demanding, 8-bit (one byte)
+samples are sometimes used.
+For multi-byte samples, a choice exists as to the order in
+which the individual bytes in a sample appear in the data stream.
+If the bytes of a sample occur starting with the the least significant
+byte and ending with the most significant byte the representation is
+said to be *little-endian*.
+The opposite ordering is said to be *big-endian*.
+These two choices do not affect the fidelity of the represented
+signal -- they are more or less arbitrary variations that have to do
+with the way the designers of a particular computer system chose
+to store multi-byte quantities in memory.
 
-- If the value obtained from `opcodeTable` is `BCOND`, then the value in bits
-20:16 is examined.  If the value is 00000, 00001, 10000, or 10001,
-then the Opcode is `OP_BLTZ`, `OP_BGEZ`, `OP_BLTZAL`, or `OP_BGEZAL`, respectively,
-otherwise it is an error.
+One other variation in the way audio signals are represented digitally
+is the way in which samples are encoded in a fixed number of bits.
+The particular encoding scheme used in CD audio is called
+*linear* encoding, or more precisely, *signed linear* encoding.
+In *unsigned linear* encoding, the bits in a sample
+are used to represent an *unsigned* amplitude, rather than a
+signed amplitude.  In this case, a 16-bit sample would represent an
+amplitude in the range [0, 65535] instead of [-32768, 32767].
+Although the choice between signed and unsigned encoding affects
+the details of signal processing algorithms, it does not affect
+the fidelity of the signal that is ultimately played back, because
+the "DC level" of a signal is inaudible and is generally filtered
+out by the amplifier and speakers.
+A disadvantage of linear encoding is the limited dynamic range
+(the range of "loudness") that can be represented.
+Other encodings exist that map the amplitudes logarithmically,
+rather than linearly, to the sample bits.
 
-Having determined the Opcode, it is then used as an index into `instrTable`
-and the corresponding `Instr_info` structure is retrieved.
-What happens next depends on the value of the `type` field.
-This value can be `NTYP` (which occurs in a few entries of the table that
-do not correspond to actual instructions), `RTYP`, which indicates an
-instruction of type R, `ITYP`, which indicates an instruction of type I,
-and `JTYP`, which indicates an instruction of type J.
+To summarize the above, the representation scheme used to encode
+data on audio CDs is described as
+*44.1KHz, 16-bit, two-channel (i.e. stereo), signed linear PCM encoding*.
+It may be *little-endian* or *big-endian*, depending on the
+computer system.
 
-The next task is to determine the sources of the instruction arguments.
-For this, the information in the `srcs` field of the `Instr_info` structure is used.
-This field consists of an array of three values of type `Source`.
-The first entry in this array specifies the source of the first instruction
-argument, the second entry specifies the source of the second instruction
-argument, and the third entry specifies the source of the third argument.
-There are five possible source values: `RS`, `RT`, `RD`, `EXTRA`, and `NSRC`.
-The value `RS` indicates that the argument source is the register specified
-by the RS field of the instruction word.
-Similarly, the values `RT` and `RD` the argument source is the register	
-specified by the RT or RD field of the instruction word, respectively.
-The value `EXTRA` indicates that the argument value has to be decoded
-from the instruction word in a way that depends on the particular type
-of instruction.
-The value `NSRC` is used as a place-holder value for instructions that take fewer
-than three arguments.
+## The `.au` audio file format
 
-For arguments with source `EXTRA`, the actual argument is determined as follows:
+The `.au` audio file format was originally introduced by Sun Microsystems.
+It is a relatively simple format that is commonly supported on many systems,
+especially on Unix and Linux systems.
+The overall structure of a `.au` can be depicted as follows:
 
-- If the Opcode is `OP_BREAK`, then the argument consists of the 20-bit
-  value in bits 25:6 of the instruction word.
+<pre>
+  +------------------+--------------------------+-------+     +-------+
+  + Header (24 bytes)| Annotation (optional) \0 | Frame | ... | Frame |
+  +------------------+--------------------------+-------+     +-------+
+                                                ^
+  &lt;----------- data offset --------------------&gt;(8-byte boundary)
+</pre>
 
-- For instructions of type R, the argument consists of the 5-bit value
-  in bits 10:6 of the instruction word.
+The file begins with a 24-byte *header* consisting of six unsigned 32-bit
+words.  These are presented in *big-endian* format, as is all other
+multibyte data in a `.au` file.  The meanings of the header fields are
+as follows:
 
-- For instructions of type I, the argument is obtained by extracting the 16-bit
-  value in bits 15:0, treating bit 15 as a sign bit,
-  and performing sign-extension to a 32-bit signed integer.
-  For non-branch instructions of type I (such as `ADDI`),
-  this 32-bit signed integer is the immediate argument to the instruction.
+- The first field in the header is the "magic number", which is always
+  equal to 0x2e736e64.  This value represents the four ASCII characters
+  ".snd".
 
-  For the conditional branch instructions
-  `BEQ`, `BGEZ`, `BGEZ`, `BGEZAL`, `BGTZ`, `BLEZ`, `BLTZ`, `BLTZAL`, `BNE`,
-  the 32-bit signed integer value is further processed by shifting it left by two bits
-  (which amounts to multiplication by 4) and then treating it as a PC-relative branch
-  offset.  It is added to the current value of the PC register (this will be the memory
-  address at which the instruction "lives", plus 4) to obtain an absolute address
-  which is the branch target.
+- The second field in the header is the "data offset", which is the
+  number of bytes from the beginning of the file that the audio sample
+  data begins.  This value must be divisible by 8.  The minimum value
+  is 24 (if there is no annotation field).  The minimum value if an
+  annotation field exists is 32.
 
-- For instructions of type J, the argument is obtained by extracting the 26-bit
-  value in bits 25:0 of the instruction word and treating it as an unsigned integer.
-  This value is shifted left by two bits and then added to the value obtained from
-  the PC by zeroing the 28 least significant bits, to obtain an absolute address
-  that is the jump target.  (As above, the PC value is given by the memory address
-  of the instruction, plus 4.)
+- The third field in the header is the "data size", which is the number
+  of bytes of audio sample data.  The value 0xffffffff indicates that
+  the size is unknown (this could occur, for example, if the format was
+  used to transmit an audio stream of indefinite duration).
 
-### Example 1:
+- The fourth field in the header specifies the encoding used for the
+  audio samples.  We will only support the following values, which
+  have the meanings shown.
 
-The instruction word is 0x00c72820, which when written in binary is:
+    - 2  (specifies 8-bit linear PCM encoding)
+    - 3  (specifies 16-bit linear PCM encoding)
+    - 4  (specifies 24-bit linear PCM encoding)
+    - 5  (specifies 32-bit linear PCM encoding)
 
-> <pre>
-> 0000 0000 1100 0111 0010 1000 0010 0000
-> OOOO OOSS SSST TTTT DDDD D      FF FFFF
-> </pre>
+- The fifth field in the header specifies the "sample rate", which is the
+  number of frames per second.
 
-The letters written underneath the bits indicate the various bit fields:
-`O` for the opcode field in bits 31:26,
-`S` for the RS field in bits 25:21,
-`T` for the RT field in bits 20:16,
-`D` for the RD field in bits 15:11, and
-`F` for the function code in bits 5:0.
-The value in bits 31:26 is 000000; i.e. 0.
-Using this as an index into `opcodeTable` yields `SPECIAL`,
-so it is then necessary to use the value in bits 5:0 as an index into `specialTable`.
-This index is 100000, or 32 in decimal, and the entry at that index is `OP_ADD`.
-The corresponding entry in `instrTable` indicates that the `ADD` instruction is
-of type R, and that the three arguments are given by RD, RS, and RT.
-The value of RD (in bits 15:11) is 00101 indicating that the first argument is
-register 5.
-The value of RS (in bits 25:21) is 00110 indicating that the second argument is
-register 6.
-The value of RT (in bits 20:16) is 00111 indicating that the third argument is
-register 7.
-So the mnemonic form of this instruction is `add $5,$6,$7`.
+- The sixth field in the header specifies the number of audio channels.
+  We will only support 1 (*i.e.* mono) and 2 (*i.e.* stereo).
 
-### Example 2:
-
-The instruction word is 0x8cc50007, which when written in binary is:
-
-> <pre>
-> 1000 1100 1100 0101 0000 0000 0000 0111
-> OOOO OOSS SSST TTTT XXXX XXXX XXXX XXXX
-> </pre>
-
-The value in bits 31:26 is 100011, or 35.
-Using this as an index into `opcodeTable` yields OP_LW.
-The corresponding entry from instrTable indicates that the
-instruction is of type I, with first argument source RT,
-second argument source EXTRA, and the third argument source RS.
-RT is 00101 so the first argument is register 5.
-RS is 00110 so the third argument is register 6.
-The second argument is obtained from bits 15:0, which have the value 7.
-So the mnemonic form of this instruction is `lw $5,7($6)`.
-
-### Example 3:
-
-The instruction word is 0x10effc1f, which when written in binary is:
-
-> <pre>
-> 0001 0000 1110 1111 1111 1100 0001 1111
-> OOOO OOSS SSST TTTT XXXX XXXX XXXX XXXX
-> </pre>
-
-The value in bits 31:26 is 000100, or 4.
-Using this as an index into `opcodeTable` yields OP_BEQ.
-The corresponding entry from instrTable indicates that the
-instruction is of type I, with first argument source RS,
-second argument source RT, and the third argument source EXTRA.
-RS is 00111 so the first argument is register 7.
-RT is 01111 so the third argument is register 15.
-The third argument is obtained from bits 15:0, which is `fc1f` in hex.
-This 16-bit value is sign-extended to the 32-bit signed value
-`fffffc1f`, which is then shifted two bits to obtain `ffff f07c`,
-or -3972 in decimal.  This is the PC-relative branch offset.
-This offset is added to the current value of the PC
-(i.e. the memory address of the instruction, plus 4) to obtain
-the final absolute address that is the branch target.
-Assuming the memory addess of this instruction is `1000` in hex,
-or 4096 in decimal, the branch target is 4096 + 4 - 3972, or 128 in decimal.
-So the mnemonic form of this instruction is `beq $7,$15,128`.
-
-### Example 4:
-
-The instruction word is 0x08000400, which when written in binary is:
+The header format can be defined by the following C code:
 
 > <pre>
-> 0000 1000 0000 0000 0000 0100 0000 0000
-> OOOO OOXX XXXX XXXX XXXX XXXX XXXX XXXX
+> #define AUDIO_MAGIC (0x2e736e64)
+> 
+> #define PCM8_ENCODING (2)
+> #define PCM16_ENCODING (3)
+> #define PCM24_ENCODING (4)
+> #define PCM32_ENCODING (5)
+> 
+> typedef struct audio_header {
+>     unsigned int magic_number;
+>     unsigned int data_offset;
+>     unsigned int data_size;
+>     unsigned int encoding;
+>     unsigned int sample_rate;
+>     unsigned int channels;
+> } AUDIO_HEADER;
 > </pre>
 
-The value in bits 31:26 is 000010, or 2.
-Using this as an index into `opcodeTable` yields OP_J.
-The value in bits 25:0 is 0000400, which is shifted left two bits to obtain
-`00001000` in hex.
-Assuming that the memory address of the instruction is `40000000` in hex,
-the PC value at the time of execution would be `40000004`.
-Clearing the 28 least-significant bits yields `40000000`, and adding this
-to `00001000` yields `40001000` in hex.
-So the mnemonic form of this instruction is `j 0x40001000`.
+Following the header is an optional "annotation field", which can be used
+to store additional information (metadata) in the audio file.
+The length of this field must be a multiple of eight bytes and it must be
+terminated with at least one null ('\0') byte, but its format is otherwise
+undefined.  We will impose a maximum size `ANNOTATION_MAX` on the annotation
+field.  When reading an audio file, if the size of the annotation
+(i.e. `input_header.data_offset - sizeof(AUDIO_HEADER)`) exceeds this maximum,
+you should treat it as an error.  Similarly, if you would be required to write
+an annotation area that exceeds the maximum size, then this should also be
+treated as an error.
 
-> :scream: The MIPS instruction set does not support jumps to addresses
-> whose four most-significant bits differ from those of the current PC value.
-> Consequently, an attempt to assemble a jump instruction (i.e. `J` or `JAL`)
-> whose target address differs in its four most-significant bits from the base
-> address supplied with `-b` should be treated as an error.
+Audio data begins on an eight-byte boundary immediately following the
+annotation field (or immediately following the header, if there is no
+annotation field).  The audio data occurs as a sequence of *frames*,
+where each frame contains data for one sample on each of the audio channels.
+The size of a frame therefore depends both on the sample encoding and on
+the number of channels.  For example, if the sample encoding is 16-bit PCM
+(i.e. two bytes per sample) and the number of channels is two, then the number
+of bytes in a frame will be 2 * 2 = 4.  If the sample encoding is 32-bit PCM
+(i.e. four bytes per sample) and the number of channels is two, then the number
+of bytes in a frame will be 2 * 4 = 8.  We will consider a partial frame at
+the end of the file to be an error.  If the header specifies the data size,
+then this size must be a multiple of the frame size, and there must be at least
+that many bytes of audio data in the file; if not, we consider it as an error.
+Extra data beyond the specified data size is not regarded as an error,
+but any such data is to be ignored as if it were not present.
 
-# Part 3: **Required** `encode` and `decode` functions
+Within a frame, the sample data for each channel occurs in sequence.
+For example, in case of 16-bit PCM encoded stereo, the first two bytes of each
+frame represents a single sample for channel 0 and the second two bytes
+represents a single sample for channel 1.  Samples are signed values encoded
+in two's-complement and are presented in big-endian (most significant byte first)
+byte order.
+
+<pre>
+ +-----------------------------------+-----------------------------------+
+ | Sample 0 MSB | ... | Sample 0 LSB | Sample 1 MSB | ... | Sample 1 LSB |
+ +-----------------------------------+-----------------------------------+
+</pre>
+
+# Part 3: **Required** Functions
 
 In order to provide some additional structure for you, as well as to make it
 possible for us to perform additional unit tests on your program,
-you are required to implement the two functions below as part of your program.
+you are required to implement the following functions as part of your program.
 The prototypes for these functions are given in `const.h`.
 Once again, you **MUST** implement these functions as part of the assignment,
 as we will be testing them separately.
 
-<pre>
-/**
- * @brief Computes the binary code for a MIPS machine instruction.
- * @details This function takes a pointer to an Instruction structure
- * that contains information defining a MIPS machine instruction and
- * computes the binary code for that instruction.  The code is returne
- * in the "value" field of the Instruction structure.
- *
- * @param ip The Instruction structure containing information about the
- * instruction, except for the "value" field.
- * @param addr Address at which the instruction is to appear in memory.
- * The address is used to compute the PC-relative offsets used in branch
- * instructions.
- * @return 1 if the instruction was successfully encoded, 0 otherwise.
- * @modifies the "value" field of the Instruction structure to contain the
- * binary code for the instruction.
- */
-int encode(Instruction *ip, unsigned int addr);
-</pre>
-
-<pre>
-/**
- * @brief Decodes the binary code for a MIPS machine instruction.
- * @details This function takes a pointer to an Instruction structure
- * whose "value" field has been initialized to the binary code for
- * MIPS machine instruction and it decodes the instruction to obtain
- * details about the type of instruction and its arguments.
- * The decoded information is returned by setting the other fields
- * of the Instruction structure.
- *
- * @param ip The Instruction structure containing the binary code for
- * a MIPS instruction in its "value" field.
- * @param addr Address at which the instruction appears in memory.
- * The address is used to compute absolute branch addresses from the
- * the PC-relative offsets that occur in the instruction.
- * @return 1 if the instruction was successfully decoded, 0 otherwise.
- * @modifies the fields other than the "value" field to contain the
- * decoded information about the instruction.
- */
-int decode (Instruction *ip, unsigned int addr);
-</pre>
-
-These functions each take as an argument a pointer to a structure of type
-`Instruction`, which is defined in `instruction.h`.
-The `decode` function assumes that the `value` field has been set to the
-binary code for a MIPS instruction, and it decodes this value to fill in
-the other fields.
-The `info` field should be set to a pointer to the appropriate
-`Instr_info` structure obtained from `instrTable`.
-The entries of the `regs` array should be set to the contents of the
-RS, RT, and RD fields of the instruction word. (**Note:** these should
-always be set even if the particular instruction does not use those fields.)
-The `extra` field should be set to the "extra" argument decoded from the
-instruction word.  As this is done differently for each type of instruction,
-this does not have to be set unless the instruction uses `EXTRA` as an
-argument source.
-The entries of the `args` field should be set to the final values of the
-instruction arguments, as required in order print out the instruction in 
-mnemonic form (i.e. `args[0]` corresponds to the first `%` in the
-`format` string, `args[1]` corresponds to the second `%`,
-and `args[2]` to the third).  If the instruction takes fewer than three
-arguments, the unused entries (i.e. the ones with src `NSRC`) should be
-set to 0.
-
-The `encode` function does the inverse operation from `decode`:
-it assumes that all the fields other than `value` have been set,
-and it computes the binary code for the instruction and stores
-it in the `value` field.
-
-> :scream: You should not define additional tables to help you map
-> instruction mnemonics to `Opcode` values for implementing
-> `encode`.  Instead, to perform this mapping you should use a linear
-> search of the existing `instrTable`.  You should use the `sscanf`
-> function to match a format string from the `instrTable` against a
-> mnemonic instruction read from the input.  The mapping defined by
-> the `specialTable` should be inverted using a similar linear scan
-> approach.
-
-The implementation of `validargs`, `encode`, and `decode` constitutes most
-of the work involved in implementing the program.  Once these have been written,
-finishing the program should be easy.
-
-One requirement we have yet to consider is the endianness option.
-Recall that "endianness" refers to the order in which the bytes in a multi-byte
-quantity are stored in memory or written to a file.
-In "little-endian" byte order, the **least-significant** byte is stored at the
-lowest-numbered memory address or written first to a file.
-In "big-endian" byte order, the **most-significant** byte is stored or written
-first.
-
-The default mode of operation of your program should be to use little-endian
-byte order for reading and writing binary MIPS code.  However, if the `-e b` option
-is specified, then big-endian ordering should be used instead.
-
-# Part 4: Running the Completed Program
-
-In either assembly or disassembly mode, the program reads from `stdin` and writes
-to `stdout`.  In assembly mode, since the input is text, it is possible to enter
-to enter assembly code directly from the terminal:
-
 > <pre>
-> $ bin/hw1 -a
-> add $5,$6,$7
-> j 0x1000
+> /**
+>  * @brief  Recodes a Sun audio (.au) format audio stream, reading the stream
+>  * from standard input and writing the recoded stream to standard output.
+>  * @details  This function reads a sequence of bytes from the standard
+>  * input and interprets it as digital audio according to the Sun audio
+>  * (.au) format.  A selected transformation (determined by the global variable
+>  * "global_options") is applied to the audio stream and the transformed stream
+>  * is written to the standard output, again according to Sun audio format.
+>  * Besides the transformation applied to the audio sample data, unless the -p
+>  * option was specified, the annotation data is transformed by prepending a
+>  * representation of the command-line arguments given to "audible".
+>  * If the transformed annotation would be longer than ANNOTATION_MAX,
+>  * it shall be considered an error and this function shall return 0 without
+>  * producing any output.  If the -p option was specified, then no transformation
+>  * is performed on the annotation, and the output annotation is identical to
+>  * the input annotation.
+>  *
+>  * @param  argv  Command-line arguments, for constructing modified annotation.
+>  * @return 1 if the recoding completed successfully, 0 otherwise.
+>  */
+> int recode(char **argv);
 > </pre>
 
-**NOTE:** In the above example, the program encrypts one line at a time
-and stops encrypting after it reads `^d` (control-d) from `stdin`. Entering `^d`
-into a terminal in a UNIX system signals an `EOF` (end of file) to the program.
-
-If you run the program in assembly mode this way, the binary output of the
-program will also be sent to the terminal.  This binary data will appear
-as "garbage" in the output.  To avoid this, the binary output should be redirected,
-either to a file or else via a pipe to a program that can produce a printable
-representation of it.
-
-To redirect the output to a file `hw1.out`, you can use:
+The annotation for the output file is constructed by prepending to the
+input annotation a representation of the command-line arguments given
+to "audible".  This representation is produced by concatenating the
+strings from the "argv" array, separating successive arguments by a
+single space (' ') character, and terminating the result with a single
+newline ('\n') character.  If the input audio file had no annotation field,
+then the output file will have an annotation that consists only of the
+audible command line, followed by at least one null ('\0') byte.
+ If the input file did have a nonempty annotation field, then the annotation
+field of the output file will consist of the ('\n'-terminated) audible
+command line, immediately followed by the original annotation from the
+input file, without any intervening null byte.  In all cases, the output
+annotation shall conform to the Sun audio file format specifications.
 
 > <pre>
-> $ bin/hw1 -a > hw1.out
-> add $5,$6,$7
-> j 0x1000
+> /**
+>  * @brief Read the header of a Sun audio file and check it for validity.
+>  * @details  This function reads 24 bytes of data from the standard input and
+>  * interprets it as the header of a Sun audio file.  The data is decoded into
+>  * six unsigned int values, assuming big-endian byte order.   The decoded values
+>  * are stored into the AUDIO_HEADER structure pointed at by hp.
+>  * The header is then checked for validity, which means:  no error occurred
+>  * while reading the header data, the magic number is valid, the data offset
+>  * is a multiple of 8, the value of encoding field is one of {2, 3, 4, 5},
+>  * and the value of the channels field is one of {1, 2}.
+>  *
+>  * @param hp  A pointer to the AUDIO_HEADER structure that is to receive
+>  * the data.
+>  * @return  1 if a valid header was read, otherwise 0.
+>  */
+> int read_header(AUDIO_HEADER *hp);
+> </pre>
+
+> <pre>
+> /**
+>  * @brief  Write the header of a Sun audio file to the standard output.
+>  * @details  This function takes the pointer to the AUDIO_HEADER structure passed
+>  * as an argument, encodes this header into 24 bytes of data according to the Sun
+>  * audio file format specifications, and writes this data to the standard output.
+>  *
+>  * @param  hp  A pointer to the AUDIO_HEADER structure that is to be output.
+>  * @return  1 if the function is successful at writing the data; otherwise 0.
+>  */
+> int write_header(AUDIO_HEADER *hp);
+> </pre>
+
+> <pre>
+> /**
+>  * @brief  Read annotation data for a Sun audio file from the standard input,
+>  * storing the contents in a specified buffer.
+>  * @details  This function takes a pointer 'ap' to a buffer capable of holding at
+>  * least 'size' characters, and it reads 'size' characters from the standard input,
+>  * storing the characters read in the specified buffer.  It is checked that the
+>  * data read is terminated by at least one null ('\0') byte.
+>  *
+>  * @param  ap  A pointer to the buffer that is to receive the annotation data.
+>  * @param  size  The number of bytes of data to be read.
+>  * @return  1 if 'size' bytes of valid annotation data were successfully read;
+>  * otherwise 0.
+>  */
+> int read_annotation(char *ap, unsigned int size);
+> </pre>
+
+> <pre>
+> /**
+>  * @brief  Write annotation data for a Sun audio file to the standard output.
+>  * @details  This function takes a pointer 'ap' to a buffer containing 'size'
+>  * characters, and it writes 'size' characters from that buffer to the standard
+>  * output.
+>  *
+>  * @param  ap  A pointer to the buffer containing the annotation data to be
+>  * written.
+>  * @param  size  The number of bytes of data to be written.
+>  * @return  1 if 'size' bytes of data were successfully written; otherwise 0.
+>  */
+> int write_annotation(char *ap, unsigned int size);
+> </pre>
+
+> <pre>
+> /**
+>  * @brief Read, from the standard input, a single frame of audio data having
+>  * a specified number of channels and bytes per sample.
+>  * @details  This function takes a pointer 'fp' to a buffer having sufficient
+>  * space to hold 'channels' values of type 'int', it reads
+>  * 'channels * bytes_per_sample' data bytes from the standard input,
+>  * interpreting each successive set of 'bytes_per_sample' data bytes as
+>  * the big-endian representation of a signed integer sample value, and it
+>  * stores the decoded sample values into the specified buffer.
+>  *
+>  * @param  fp  A pointer to the buffer that is to receive the decoded sample
+>  * values.
+>  * @param  channels  The number of channels.
+>  * @param  bytes_per_sample  The number of bytes per sample.
+>  * @return  1 if a complete frame was read without error; otherwise 0.
+>  */
+> int read_frame(int *fp, int channels, int bytes_per_sample);
+> </pre>
+
+> <pre>
+> /**
+>  * @brief  Write, to the standard output, a single frame of audio data having
+>  * a specified number of channels and bytes per sample.
+>  * @details  This function takes a pointer 'fp' to a buffer that contains
+>  * 'channels' values of type 'int', and it writes these data values to the
+>  * standard output using big-endian byte order, resulting in a total of
+>  * 'channels * bytes_per_sample' data bytes written.
+>  *
+>  * @param  fp  A pointer to the buffer that contains the sample values to
+>  * be written.
+>  * @param  channels  The number of channels.
+>  * @param  bytes_per_sample  The number of bytes per sample.
+>  * @return  1 if the complete frame was written without error; otherwise 0.
+>  */
+> int write_frame(int *fp, int channels, int bytes_per_sample);
+> </pre>
+
+# Part 4: Transformations on the Audio Data
+
+## "Speed Up" (Decimation)
+
+If the "speed-up" transformation is selected (option `-u`), with a `FACTOR` equal
+to `N`, then the output audio data is obtained from the input audio data simply
+by retaining only every `N`th frame.  Specifically, if the input frames are numbered
+0, 1, 2, ..., then the frames numbered 0, N, 2N, ... are passed through to the
+output and the intervening frames are discarded.  This is a lossy transformation,
+as it discards information from the original file.
+
+## "Slow Down" (Interpolation)
+
+If the "slow-down" transformation is selected (option `-d`), with a `FACTOR` equal
+to `N`, then the output audio data is obtained from the input audio data by
+using linear interpolation to insert `N-1` additional frames between each two
+frames of the input.  Specifically, if the input frames are numbered 0, 1, 2, ...,
+then these frames will occur in the output as frames 0, N, 2N, ..., and
+for `i` equal to 0, 1, 2, ..., the frames `i*N+1`, `i*N+2`, ..., `i*N+(N-1)`
+have sample values intermediate between the sample values in the frame `i*N`
+and those in the frame `(i+1)*N`, in the sense that if S and T are
+the sample values for channel C in frames `i*N` and `(i+1)*N`, then the
+sample value for channel C in frame `i*N+k` is given by the formula
+`S + (T - S)*k/N`.  This amounts to drawing a straight line between two sample
+value in the original input and inserting `N-1` new sample values at evenly
+spaced intervals along this line.
+
+Note that in the "slow down" transformation, new frames are only interpolated
+between frames that exist in the original input; in particular, the first frame
+and the last frame of the output will always be frames that existed in the input.
+
+## "Crypt" (Encryption/Decryption)
+
+If the "crypt" transformation is selected (option `-c`), with a `KEY` equal
+to the 32-bit value `K`, then samples in the output audio data are obtained
+by performing a bitwise exclusive-OR (XOR) of each sample value in
+the input audio data with successive 32-bit values obtained from a pseudorandom
+number generator (PRNG) that has been initialized with `K` as its seed.
+This transformation obfuscates the original audio so that if the result is
+played through the computer speakers, it will sound like "white noise".
+Due to the properties of the exclusive-OR operation, if the obfuscated data
+is subjected again to the same transformation, using the same PRNG
+initialized with the same seed, the original audio data will be
+recovered exactly.  Note that we are only applying the XOR operator to the
+audio sample data; the contents of the header and any annotation field are
+left unencrypted.
+
+To ensure that audio data encrypted on one system can be decrypted on another
+system, we need to build the PRNG into our program, rather than relying on a
+library version.  The file `myrand.c` provided with the base code contains the
+PRNG you are to use.  It provides two functions: `mysrand()`, which is used
+to set the seed, and `myrand32()` which when called returns the next 32-bit value
+from the pseudorandom sequence.  The `myrand32()` should be called exactly once
+for each successive sample value in the input data.
+
+
+# Part 5: Running the Completed Program
+
+In any of its operating modes, the `audible` program reads from `stdin` and writes
+to `stdout`.  As the input and output of the program is binary data, it will not
+be useful to enter input directly from the terminal or display output directly to
+the terminal.  Instead, the program can be run using *input and output redirection*
+as in the following example:
+
+> <pre>
+> $ bin/audible -u -f 2 < rsrc/sample.au > out.au
 > $ echo $?
 > 0
 > </pre>
+
+This will cause the input to the program to be redirected from the file
+`rsrc/sample.au` and the output from the program to be redirected to the file
+`out.au`.
 
 > :nerd: The `>` symbol tells the shell to perform "output redirection":
 > the file `hw1.out` is created (or truncated if it already existed -- be careful!)
@@ -664,67 +787,91 @@ To redirect the output to a file `hw1.out`, you can use:
 > the previous program run.  In the above, the `echo` command is used to display
 > the value of this variable.
 
-The contents of `hw1.out` can then be viewed using the `od` ("octal dump") command:
+For debugging purposes, the contents of `out.au` can be viewed using the
+`od` ("octal dump") command:
 
 > <pre>
-> $ od -X hw1.out
-> 0000000 00c72820 08000400
-> 0000010
+> $ od -t x1 out.au
+> 0000000 2e 73 6e 64 00 00 00 30 00 01 12 f4 00 00 00 03
+> 0000020 00 00 1f 40 00 00 00 02 62 69 6e 2f 61 75 64 69
+> 0000040 62 6c 65 20 2d 75 20 2d 66 20 32 0a 00 00 00 00
+> 0000060 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+> *
+> 0000720 00 00 00 00 00 00 00 00 00 00 00 00 01 00 01 00
+> 0000740 02 00 02 00 fc 00 fc 00 00 00 00 00 f9 00 f9 00
+> (etc.)
 > </pre>
 
-> :nerd: The `-X` flag instructs `od` to interpret the file as a sequence of 32-bit
-> words, which are printed as 8-digit hexadecimal values.  In this case, the file
-> contains two such words: `00c72820` and `08000400`.  The values in the first
-> column indicate the offsets from the beginning of the file, specified as 7-digit
-> octal (base 8) numbers.
+In this case, you can see that the file data starts with the sequence
+`2e`, `73`, `6e`, `64`, which is the magic number `0x2e736e64` in big-endian form.
+The values in the first column indicate the offsets from the beginning of the file,
+specified as 7-digit octal (base 8) numbers.
 
-Alternatively, the output of the program could be redirected via a "pipe" to
-the `od` command, without using any file:
+> :nerd: The `-t x1` flag instructs `od` to interpret the file as a sequence of
+> individual bytes (that is the meaning of the "`1`" in "`x1`"), which are printed as
+> hexadecimal values (that is the meaning of the "`x`" in "`x1`").  The `od` program has
+> many options for setting the output format; another useful version is `od -bc`,
+> which shows individual bytes of data as both ASCII characters and their octal codes.
+> Refer to the "man" page for `od` for other possiblities.
+
+Actually, if you were to try the above command with `out.au` produced
+as shown, there would be so much output that the first few lines would be
+lost off of the top of the screen.  To avoid this, you can *pipe* the output to
+a program called `less`:
 
 > <pre>
-> $ bin/hw1 -a | od -X
-> add $5,$6,$7
-> j 0x1000
-> 0000000 00c72820 08000400
-> 0000010
+> $ od -t x1 out.au | less
 > </pre>
 
-> :nerd: In this case, you won't see the output produced by `od` until
-> `^d` has been typed, because when the output of a program is redirected to
-> a pipe the system assumes that the program is being run non-interactively,
-> so for efficiency it buffers a larger amount of the output rather than
-> emitting it a line at a time.
+This will display only the first screenful of the output and give you the
+ability to scan forward and backward to see different parts of the output.
+Type `h` at the `less` prompt to get help information on what you can do
+with it.  Type `q` at the prompt to exit `less`.
 
-In disassembly mode, it is not very useful to read the input from the terminal,
-since it would be very difficult to generate the necessary binary data using
-the keyboard.  Instead, the input should be redirected *from* a file:
+Alternatively, the output of the program can be redirected via a pipe to
+the `od` command, without using any output file:
 
 > <pre>
-> $ bin/hw1 -d < hw1.out
-> add $5,$6,$7
-> j 0x1000
+> $ bin/audible -u -f 2 < rsrc/sample.au | od -t x1 | less
 > </pre>
 
-Finally, a pipe can be used to assemble and disassemble in a single run.
-This is one way to test whether your program is working properly:
+You can also arrange for a valid Sun audio file to be played through
+the computer speakers using (among other choices) the `paplay` command:
 
 > <pre>
-> $ bin/hw1 -a | bin/hw1 -d
-> add $5,$6,$7
-> j 0x1000
-> add $5,$6,$7
-> j 0x1000
+> $ paplay rsrc/sample.au
 > </pre>
 
-The output should be identical to the input if the program is working properly.
+Once your program starts producing valid output files, you can play
+them to find out quickly whether the results are as you would expect
+them to be.  This can also be done using pipes; for example:
+
+> <pre>
+> $ bin/audible -u -f 2 < rsrc/sample.au | paplay
+> </pre>
+
+Finally, pipes can be used to compose a sequence of transformations performed
+by `audible`.  For example, the following command will play the sample audio
+at a speed 1.5x faster than the original:
+
+> <pre>
+> $ cat rsrc/sample.au | bin/audible -d -f 2 | bin/audible -u -f 3 | paplay
+> </pre>
+
+> :nerd: Note that here we have performed the information-preserving "slow down"
+> (interpolation) transformation first, followed by the lossy "speed up" (decimation)
+> transformation.  This results in minimal loss of audio quality.
+> If you perform the transformations in the opposite order, you still get
+> a speed up by a factor of 1.5, but there is a very noticable loss of audio quality.
 
 ## Testing Your Program
 
 In testing your program, it is useful to be able to compare two files
 to see if they have the same content.  The `diff` command (use `man diff`
-to read the manual page) is useful for comparison of text files.
-On the other hand, the `cmp` command can be used to perform a byte-by-byte
-comparison of two files, regardless of their content:
+to read the manual page) is useful for comparison of text files, but not particularly
+useful for comparing binary files such as audio files.
+However the `cmp` command can be used to perform a byte-by-byte comparison of two files,
+regardless of their content:
 
 > <pre>
 > $ cmp file1 file2
@@ -735,29 +882,29 @@ If one file is shorter than the other, but the content is otherwise identical,
 `cmp` will report that it has reached `EOF` on the shorter file.
 Finally, if the files disagree at some point, `cmp` will report the
 offset of the first byte at which the files disagree.
+If the `-l` flag is given, `cmp` will report all disagreements between the
+two files.
 
 We can take this a step further and run an entire test without using any files:
 
 > <pre>
-> $ cmp &lt;(echo "j 0x1000") &lt;(echo "j 0x1000" | bin/hw1 -a | bin/hw1 -d)
+> $ cmp -l &lt;(cat rsrc/sample.au) &lt;(cat rsrc/sample.au | bin/audible -d -f 2 -p | bin/audible -u -f 2 -p)
 > $ echo $?
 > 0
 > </pre>
+
+This compares the original file `sample.au` with the result of taking that
+file and first performing a slow-down transformation with a factor of 2 and
+then a speed-up transformation, also with a factor of 2.
 
 > :nerd: `<(...)` is known as process substitution. It is allows the output of the
 > program(s) inside the parentheses to appear as a file for the outer program.
 
-Because both strings are identical, `cmp` outputs nothing.
-
-Finally, we can test the program on entire files with a similar command:
-
-> <pre>
-> $ cmp &lt;(cat rsrc/bcond.asm) &lt;(cat rsrc/bcond.asm | bin/hw1 -a -b 1000 | bin/hw1 -d -b 1000)
-> $ echo $?
-> 0
-> </pre>
-
 > :nerd: `cat` is a command that outputs a file to `stdout`.
+
+Because both files are identical, `cmp` outputs nothing.
+(Note that had we not specified the `-p` flag, the files would have differed
+in their annotation fields.)
 
 ## Unit Testing
 
@@ -781,20 +928,20 @@ following:
 - `validargs_help_test` ensures that `validargs` sets the help bit
 correctly when the `-h` flag is passed in.
 
-- `validargs_disassem_test` ensures that `validargs` sets the Disassembly bit
-correctly when the `-d` flag is passed in.
+- `validargs_speedup_test` ensures that `validargs` sets the speed-up bit
+correctly when the `-u` flag is passed in.
 
 - `help_system_test` uses the `system` syscall to execute your program through
 Bash and checks to see that your program returns with `EXIT_SUCCESS`.
 
 ### Compiling and Running Tests
 
-When you compile your program with `make`, a `hw1_tests` executable will be
-created in your `bin` directory alongside the `hw1` executable. Running this
-executable from the `hw1` directory with the command `bin/hw1_tests` will run
+When you compile your program with `make`, an `audible_tests` executable will be
+created in your `bin` directory alongside the `audible` executable. Running this
+executable from the `hw1` directory with the command `bin/audible_tests` will run
 the unit tests described above and print the test outputs to `stdout`. To obtain
 more information about each test run, you can use the verbose print option:
-`bin/hw1_tests --verbose=0`.
+`bin/audible_tests --verbose=0`.
 
 The tests we have provided are very minimal and are meant as a starting point
 for you to learn about Criterion, not to fully test your homework. You may write
@@ -802,42 +949,76 @@ your own additional tests in `tests/hw1_tests.c`. However, this is not required
 for this assignment. Criterion documentation for writing your own tests can be
 found [here](http://criterion.readthedocs.io/en/master/).
 
+## Sample Audio Files
+
+To get you started testing your program, a few sample files have been provided
+in the `rsrc` directory:
+
+- [sample.au](rsrc/sample.au)
+  A short sample audio clip from the
+  Wikipedia [Au file format](https://en.wikipedia.org/wiki/Au_file_format) page.
+  It has a sample rate of 8000Hz, two channels, and uses 16-bit PCM encoding.
+- [sample_d_f2.au](rsrc/sample_d_f2.au)
+  This is the output of running `audible -d -f 2` on `sample.au`.
+- [sample_u_f2.au](rsrc/sample_u_f2.au)
+  This is the output of running `audible -u -f 2` on `sample.au`.
+- [sample_c_DeadBeef.au](rsrc/sample_c_DeadBeef.au)
+  This is the output of running `audible -c -k DeadBeef` on `sample.au`.
+- [triangle_1kHz_2ch_8bit.au](rsrc/triangle_1kHz_2ch_8bit.au)
+  This artificially generated file consists of 10 frames of 2 channels,
+  using 8-bit PCM encoding and a 1000Hz sample rate.
+  The samples on one channel alternate 127, -127, 127, ..., and the samples
+  on the other channel alternate -127, 127, -127, ... .
+  When viewed as a waveform using the "Audacity" audio tool it looks like
+  a (degenerate) "triangle wave", as shown in the screenshot below:
+
+  <img src="triangle_orig.png">
+  
+- [triangle_1kHz_2ch_8bit_d_f10.au](rsrc/triangle_1kHz_2ch_8bit_d_f10.au)
+  This is the result of running `audible -d -f 10` on
+  `triangle_1kHz_2ch_8bit.au`.  In the screenshot below you can see how new
+  samples have been interpolated between those in the original file,
+  resulting in a less degenerate triangle waveform.
+  This file has been provided to help you understand the interpolation
+  process.
+
+  <img src="triangle_x10.png">
+
+There is a free program called `sox` that can perform many different kinds
+of audio format conversions, which you can use to create your own test files.
+You can install it using `sudo apt install sox`.
+
+
 # Hand-in instructions
 **TEST YOUR PROGRAM VIGOROUSLY!**
 
-Make sure your directory tree looks like this and that your homework compiles:
+Make sure your directory tree looks like this (possibly with additional
+files that you added) and that your homework compiles (you should be sure
+to try compiling with both `make clean all` and `make clean debug`
+because there are certain errors that can occur one way but not the other).
 
 <pre>
 hw1
 ├── include
+│   ├── audio.h
 │   ├── const.h
 │   ├── debug.h
 │   ├── hw1.h
-│   ├── instruction.h
-│   └── ... Any additional .h files you defined
+│   └── myrand.h
 ├── Makefile
 ├── rsrc
-│   ├── bcond.asm
-│   ├── bcond.bin
-│   ├── examples.asm
-│   ├── examples.bin
-│   ├── jump.asm
-│   ├── jump.bin
-│   ├── matmult.asm
-│   ├── matmult.bin
-│   ├── typei.asm
-│   ├── typei.bin
-│   ├── typer.asm
-│   ├── typer.bin
-│   └── ... Any sample text files given or created (will not be used in graded)
+│   ├── sample.au
+│   ├── sample_c_DeadBeef.au
+│   ├── sample_d_f2.au
+│   ├── sample_u_f2.au
+│   ├── triangle_1kHz_2ch_8bit.au
+│   └── triangle_1kHz_2ch_8bit_d_f10.au
 ├── src
 │   ├── hw1.c
-│   ├── instr_table.c
-│   └── main.c
+│   ├── main.c
+│   └── myrand.c
 └── tests
-    ├─── hw1_tests.c
-    └── ... Any additional criterion test files you may have written
-
+    └── hw1_tests.c
 </pre>
 
 This homework's tag is: `hw1`

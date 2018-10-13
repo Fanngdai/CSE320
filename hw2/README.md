@@ -1,7 +1,7 @@
 # Homework 2 Debugging and Fixing - CSE 320 - Spring 2018
 #### Professor Eugene Stark
 
-### **Due Date: Friday 02/23/2018 @ 11:59pm**
+### **Due Date: Friday 10/5/2018 @ 11:59pm**
 
 # Introduction
 
@@ -29,27 +29,24 @@ with the C programming language and develop an understanding of:
 
 ## The Existing Program
 
-Your goal will be to debug and extend the `snarf` program.
-This program is a simple HTTP client, which can contact an HTTP server
-over the Internet and retrieve a document.
-This particular program was written over twenty years ago,
-in the very early days of the Web.
-A version of this program was known to function at one point,
-though it is not clear whether the version you will receive is the
-actual functioning code or perhaps an incompletely debugged predecessor.
-One thing for sure is that the simple way in which this program
-uses the HTTP protocol is still compatible with modern HTTP servers,
-so you should not have to worry about debugging the use of HTTP itself.
-However, as often happens with code that has not been updated for a long
-time, this program has "rotted" a bit, in the sense that it uses
-a library function `fgetln()`, which was part of the Berkeley Unix (BSD)
-standard I/O library but which is not found by default on Linux systems.
-Although it is possible to find versions of the BSD standard I/O
-library that will run on Linux, the `fgetln()` function has been
-deprecated and should no longer be used.
-To get the program to function, you will need to replace the uses of
-`fgetln()` by the `getline()` function, which is supported by Linux
-and is also a POSIX standard.
+Your goal will be to debug and extend the `grades` program.
+I (Prof. Stark) wrote this particular program in 1991 for my own use,
+and have continued to use it to the present day.  The original version
+ran under SunOS and (as far as I recall, some version of MS-DOS or perhaps
+Windows 3.1).  I have made only minimal changes to it over the years,
+to get it to function on other systems, including FreeBSD and Ubuntu.
+As the code was written a long time ago, only a short time after the ANSI C
+standard was adopted and before I personally had much experience with it,
+the code contains some pre-ANSI features: most notably, old-style function
+headers instead of ANSI C function prototypes.
+To be completely honest about the matter, the version of the program I am
+handing out is not exactly the same as the one that I use, since I have
+made a few changes for this assignment :wink:.  First of all, I introduced
+a few bugs here and there to make things more interesting and educational
+for you.  Aside from the introduced bugs, the only source file that is
+substantially different from the original is `main.c`, which I have
+rewritten to use GNU `getopt` for argument processing where it previously
+did not.
 
 ### Getting Started - Obtain the Base Code
 
@@ -61,159 +58,124 @@ Once again, to avoid a merge conflict with respect to the file `.gitlab-ci.yml`,
 use the following command to merge the commits:
 
 
-	    git merge -m "Merging HW2_CODE" HW2_CODE/master --strategy-option theirs
+	    git merge -m "Merging HW2_CODE" HW2_CODE/master --strategy-option=theirs
 
 
 Here is the structure of the base code:
 
 <pre>
 .
-├── .gitlab-ci.yml
 └── hw2
+    ├── cse307a.dat
+    ├── cse307b.dat
+    ├── cse307c.dat
+    ├── cse307.dat
     ├── include
+    │   ├── allocate.h
     │   ├── debug.h
-    │   ├── http.h
-    │   ├── ipaddr.h
-    │   ├── snarf.h
-    │   └── url.h
+    │   ├── global.h
+    │   ├── gradedb.h
+    │   ├── normal.h
+    │   ├── read.h
+    │   ├── sort.h
+    │   ├── stats.h
+    │   ├── version.h
+    │   └── write.h
     ├── Makefile
+    ├── rsrc
+    │   ├── cse307.collated
+    │   └── cse307.tabsep
     ├── src
-    │   ├── args.c
-    │   ├── http.c
-    │   ├── snarf.c
-    │   └── url.c
+    │   ├── allocate.c
+    │   ├── error.c
+    │   ├── main.c
+    │   ├── normal.c
+    │   ├── read.c
+    │   ├── report.c
+    │   ├── sort.c
+    │   ├── stats.c
+    │   └── write.c
     └── tests
-        └── snarf_tests.c
+        └── grades_tests.c
 </pre>
 
 Before you begin work on this assignment, you should read the rest of this
 document.  In addition, we additionally advise you to read the
 [Debugging Document](DebuggingRef.md).
 
-# HTTP -- In Brief
+# Part 1: Debugging and Fixing
 
-HTTP ([HyperText Transfer Protocol](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol))
-is the network protocol that is used by Web browsers to contact Web servers
-and retrieve documents (Web pages and associated data) over the Internet.
-It was initially developed by Tim Berners-Lee, the "father of the
-World-Wide Web".
-You don't really have to know very much technical information about
-networking or HTTP to do this assignment, but the following discussion
-should help you to get oriented.
+The command line arguments and expected operation of the program are described
+by the following "usage" message, which is printed by the function `usage()`
+in `main.c`:
 
-A client application wishing to retrieve a document from a Web server
-typically starts out with a
-URL ([Uniform Resource Locator](https://en.wikipedia.org/wiki/URL)).
-Although there is [a precise specification](https://tools.ietf.org/html/rfc1738)
-for the syntax of URLs, to which a standards-compliant client must adhere,
-for our purposes we will be somewhat informal and simply regard a URL
-as having the following general form:
+<pre>
+Usage: bin/grades [options] <data file>
+Valid options are:
+	-r, --report                 	Process input data and produce specified reports.
+	-c, --collate                	Collate input data and dump to standard output.
+	    --freqs                  	Print frequency tables.
+	    --quants                 	Print quantile information.
+	    --summaries              	Print quantile summaries.
+	    --stats                  	Print means and standard deviations.
+	    --comps                  	Print students' composite scores.
+	    --indivs                 	Print students' individual scores.
+	    --histos                 	Print histograms of assignment scores.
+	    --tabsep                 	Print tab-separated table of student scores.
+	-a, --all                    	Print all reports.
+	-k, --sortby     &lt;key&gt;          Sort by {name, id, score}.
+	-n, --nonames                	Suppress printing of students' names.
+	-o, --output     &lt;outfile&gt;      Write output to file, rather than standard output.
+</pre>
 
-	    method://hostname:port/path-to-resource
+The `--reports` and `--collate` options are mutually exclusive positional arguments
+that must appear first.  The remaining (non-positional) options may appear in any
+order.  Following the options is a single final argument that specifies the name of
+a data file to be read as input.
 
-Here, `method` is a keyword describing the method or protocol to be used
-to access the resource.  For us, `method` will always be `http`.
-The `hostname` is either an Internet hostname or an IP address
-in "dotted quad" form (*e.g.* `192.168.1.3`).
-If a hostname is provided, it is mapped to an IP
-address using DNS ([Domain Name System](https://en.wikipedia.org/wiki/Domain_Name_System)).
-The IP address obtained from the URL is used to open a connection to
-the server using
-TCP ([Transmission Control Protocol](https://en.wikipedia.org/wiki/Transmission_Control_Protocol)).
-The `port` is a number that identifies which one of possibly several services
-running on the server is to be contacted.
-Standard Internet protocols such as HTTP have standardized, "well-known" port numbers.
-For HTTP the well-known port number is 80, though an HTTP server may
-also accept connections on nonstandard ports.
+Option processing in `main()` is performed with the help of the GNU `getopt` library.
+This library supports a flexible syntax for command-line arguments, including support
+for traditional single-character options (prefixed by '-') and "long-form" options
+(prefixed by '--'), which need not be single characters.
+The library also takes care of some of the "grunt work" in parsing option arguments
+and producing error messages.
+You will probably need to read the Linux "man page" on the `getopt` package.
+This can be accessed via the command `man 3 getopt`.  If you need further information,
+search for "GNU getopt documentation" on the Web.
 
-> :nerd: The URL syntax is fairly flexible: many parts are optional in
-> various circumstances.  For example; the `:port` can be omitted,
-> the `/path_to_resource` can be omitted, or the `path_to_resource`
-> can be empty.  A program accepting a URL as input from a user should
-> be prepared to handle an arbitrary string.  It must check that the
-> provided string can be interpreted as a URL, with necessary fields
-> present, and it must perform this validation without crashing,
-> regardless of the string the user entered.
-
-Once a connection has been established with the server, the client sends
-information describing the request.  We are only interested in the very
-simplest form of HTTP request: `GET`.
-To issue a `GET` request to a server it is sufficient for the client to
-send two lines of text of the following form over the connection.
-
-        GET method://hostname:port/path-to-resource HTTP/1.0
-        Host: server
-
-In the above, `GET` is a fixed keyword identifying the type of request,
-`method`, `hostname`, `port`, and `path-to-resource` are as previously described,
-and `HTTP/1.0` is fixed information indicating that the HTTP protocol,
-version 1.0, is to be used.
-
-Following the `GET` request line can be one or more *request headers*,
-each of which is a `keyword: value` pair that occurs on a separate line.
-The header keywords are not case-sensitive.
-For HTTP 1.0 there is one required request header, which has keyword `Host`
-and whose value identifies the server to which the request is directed.
-Usually, `server` would be the same as `hostname`.
-The request line and each of the lines with the request headers are terminated
-by a two-byte CR-LF sequence (`"\r\n"` as a C string).
-Following the last request header is a blank line, consisting of just
-the line-termination sequence (again, `"\r\n"`).
-
-When the server sees the blank line that terminates the list of request
-headers, it sends its response.
-The response begins with single response line, of the form:
-
-        HTTP/1.0 code 
-
-This line uses the same line termination sequence as the request lines.
-The `HTTP/1.0` echoes the protocol version indicated by the client,
-and the `code` is a numeric *status code* that indicates the disposition
-of the request.  A list of status codes can be found 
-[here](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes),
-but we are only interested in a few of them and these are listed in
-comments in the base code you have been given.
-
-Following the response line is a sequence of response headers,
-similar to the request headers, with a blank line indicating the
-end of the response headers.
-Following this blank line is a sequence of bytes comprising the
-document payload.
-If the response headers include a header of the form:
-`Content-length: NNN`, then the number `NNN` indicates the number
-of bytes of payload that follows the headers.
-The client can use this to determine how much data to read from
-the network connection.
-Once the payload has been consumed, the client closes the network
-connection and the transaction is complete.
-
-# Part 1: Fixing and Debugging
-
-The command line arguments for this program are described in the `USAGE` macro
-in `include/snarf.h`.
-
-The `USAGE` statement defines the corrected expected operation of the program.
-
-> :scream: You MUST use the `getopt` function to process the command line
-> arguments passed to the program. Your program should be able to
-> handle cases where the flags are passed IN ANY order. This does not
-> apply to positional arguments
+> :scream: You MUST use the `getopt_long()` function to process the command line
+> arguments passed to the program, as in the base code. Your program should be able to
+> handle cases where the (non-positional) flags are passed IN ANY order.  This does not
+> apply to positional arguments.
 
 You can modify anything you want in the assignment.
 
 Complete the following steps:
 
-1. Fix any compilation issues
+1. Clean up the code; fixing any compilation issues, so that it compiles
+   without error using the compiler options that have been set for you in
+   the `Makefile`.
 
-2. Ensure runtime correctness by verifying output with the provided
-   Criterion unit tests and your own created unit tests.
+>**Note:** To fix the compilation errors related to the functions defined in `error.c`,
+>you will need to make them into "variadic" functions, which take a variable
+>number of arguments.  Read about "variable length argument lists" in K&amp;R 7.3
+>or elsewhere, and read the man pages for `stdarg` (`man 3 stdarg`) and
+>`vfprintf()` (`man 3 vfprintf`).  Using what you have learned, rewrite the
+>functions in `error.c` to have variable-length argument lists, and arrange
+>for all arguments after the first to be passed as a `va_list` to `vfprintf()`.
+
+2. Fix bugs.  To get started, try running `bin/grades cse307.dat`.
+   The program will crash.  Track down and fix the problem.
+   Repeat until the program runs without crashing.
+   Check the functionality of various option settings.  You should
+   also use the provided Criterion unit tests to help point the way.
 
 3. Use `valgrind` to identify any memory leaks or other memory access
-   errors. Fix any errors you find.
+   errors.  Fix any errors you find.
 
 Run `valgrind` using the following command:
 
-	    valgrind --leak-check=full --show-leak-kinds=all [SNARF PROGRAM AND ARGS]
+	    valgrind --leak-check=full --show-leak-kinds=all [GRADES PROGRAM AND ARGS]
 
 > :scream: You are **NOT** allowed to share or post on PIAZZA
 > solutions to the bugs in this program, as this defeats the point of
@@ -224,27 +186,21 @@ Run `valgrind` using the following command:
 
 Add the following additional features to complete the program's functionality:
 
-- **Exit status:** If the program is completely successful (HTTP status code 200
-  and no error of any kind), then the exit status should be 0.
-  If the HTTP status code is anything other than 200, the exit status should
-  be the HTTP status code.
-  If any other kind of error occurs (*e.g.* invalid arguments, error saving document
-  to a file), the exit status should be -1.
+- Traditional single-character options:  The table of options in `main.c`
+  specifies single-character forms for some of the options, but you will find
+  that the program does not recognize them.  Correct that omission.
 
-- Implement the `-h` option.  If this option is present, then the USAGE
-  macro should be used to print a help message and the program should
-  exit with zero exit status.
+> :nerd: A good program ideally does not contain multiple definitions that have
+> to be kept consistent with each other, as this makes maintenance more difficult.
+> You should add the single-character option functionality in such a
+> way that (as in the base code) all the information about the options is contained
+> in the `options_table` array, and there is no information anywhere else that has
+> to be kept consistent with it.
 
-- Implement the `-q keyword` option.  If this option is present, then
-  the HTTP response headers will be searched for header lines having the
-  specified keywords.  Any matching header lines will be output
-  *to `stderr`*.
-  This option may be given more than once, with different keywords,
-  to search for several different keywords in the same run.
-
-- Implement the `-o file` options.  If this option is present, then
-  the retrieved document payload is saved as the specified file,
-  rather than being printed on `stdout`.
+- New option: `--output <outfile>`:  Add to the program an additional non-positional
+  option `--output` (short form `-o`) which takes a required filename as an argument.
+  When this option is given, output that the program would normally print to the
+  standard output should now be sent to the specified file.
 
 # Unit Testing
 
@@ -253,16 +209,17 @@ Criterion unit tests to help you debug the program.  We encourage you
 to write your own as well as it can help to quickly test inputs to and
 outputs from functions in isolation.
 
-In the `tests/snarf_tests.c` file, there are six unit test examples.
-You can run these with the `bin/snarf_tests` command.  Each test is for a
-separate part of the program.  For example, the first test case is for
-the `parse_url` function.  Each test has one or more assertions to make sure that
-your code functions properly.  If there was a problem before an assertion,
-such as a SEGFAULT, the unit test will print the error to the screen
-and continue to run the rest of the tests.
+In the `tests/grades_tests.c` file, there are six unit test examples.
+You can run these with the `bin/grades_tests` command.  Each test is
+(as much as is feasible) for a separate part of the program.
+For example, the first test case just tests the `readfile()` function.
+Each test has one or more assertions to make sure that the code functions
+properly.  If there was a problem before an assertion, such as a SEGFAULT,
+the unit test will print the error to the screen and continue to run the
+rest of the tests.
 
 To obtain more information about each test run, you can use the
-verbose print option: `bin/snarf_tests --verbose=1`.
+verbose print option: `bin/grades_tests --verbose=1`.
 
 You may write more of your own tests if you wish.  Criterion documentation
 for writing your own tests can be found
@@ -281,7 +238,3 @@ This homework's tag is: `hw2`
 
 	    $ git submit hw2
 
-> :nerd: When writing your program try to comment as much as possible.
-> Try to stay consistent with your formatting.  It is much easier for
-> your TA and the professor to help you if we can figure out what your
-> code does quickly.
