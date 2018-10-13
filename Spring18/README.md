@@ -1,8 +1,8 @@
 # Fanng Dai
-## STUDID
-## Only hw 1 & 2 are completely completed. The rest are base codes given when the assignment was assigned.
-# hw1 is on MIPs converter. From MIPs instruction to hex and vice versa.
-# hw2 is very similar to the curl command (I would say it has the exact same functionalities).
+
+* Only hw 1 & 2 are completely completed. The rest are base codes.
+* hw1 is on **MIPs register** converter. From **MIPs instruction** to **hex** and vice versa.
+* hw2 is very similar to the **curl command** (I would say it has the exact same functionalities).
 
 :poop:
 Eugene Stark - 02
