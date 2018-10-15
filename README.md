@@ -1,5 +1,5 @@
 # CSE320
-Programming assignments for programming and essential concepts of operating systems, compilers, concurrency, and performance analysis course. Spring18 coming soon.
+Programming assignments for programming and essential concepts of operating systems, compilers, concurrency, and performance analysis course.
 
 Taken **Fall 2018** at **Stony Brook University** with Professor **Eugene Stark**..
 
