@@ -848,3 +848,49 @@ This homework's tag is: `hw1`
 > stay consistent with your formatting. It is much easier for your TA and the
 > professor to help you if we can figure out what your code does quickly!
 
+CSE320 hw1 Test cases
+
+- [x] Consider duplicate RS, RT, RD & EXTRA - no
+- [x] -h abcd is valid? Yes it is
+- [x] Can base address be empty? No
+- [x] global_options change?
+        * If it is invalid, return 0
+- [x] table is 64 always
+- [x] ILLEGL is part of insertTable does that mean I have to copy that over into info*
+- [x] NTYP should it return 0? Yes
+- [x] Reg[A,\0,B] this format? Yes
+- [x] For input, what number base is the user inputting? - must be binary
+- [x] Can I assume that one instruction can only have one of the same instruction?
+        * add $5,$6,$7
+        * add $4,0($5)	<- although this is not valid, can I assume that there will only be one add in the table?
+- [x] size 64 for opcodeTable, specialTable, & instrTable
+- [x] Reset in decode if error? - No
+- [x] For main, should I clear my Instruction (ip)? except the value/not value. - no
+- [x] Just to confirm, I can leave debug statements. No comment out.
+        * Set up ssh
+- [x] All extra and rd are unsigned? - doesn’t matter
+- [x] How about trying to use a Jump - branch without an address identified - default is 0
+- [x] if the input for decode is in what base?
+- [x] RFE - no need to worry
+- [x] execute a program. input is invalid. What to do? like -d but add $5,$6,$7
+- [x] If there are 2 arguments, what value is in the other index?
+- [x] Does order matter in regs? lw reg[5,\0,6] or reg[5,6,\0] yes order matters
+- [x] Make sure to delete comments to files you modified
+- [x] If there are less than 3 regs what are stored in the empty index of regs?
+
+Questions to ask Stark
+- [x] Check if the register and args passed in from the user are valid in encode and decode.
+- [x] Check if the address provided for -b is a valid hex address.
+- [x] Check if the option provided for -e is a valid 
+- [x] Test encode for opcode BCOND from console input to see if using unsigned int op is correct. This was fixed with default: for switch case below.
+        * Check what to do for NTYP instruction - 
+- [x] Ask what to set when we get an ILLEGL instruction. Should we clear instr_bin, regs, srcs, args, etc?
+- [x] If reaching NTYP instruction, just print out that instruction name
+- [x] Conflicts with given binary file for mathmul.bin with conflicting immediate values for line 84, beq $2,$0,348, expect 10400003, get 10400056 for example
+- [x] Fix matmult.bin not working:
+- [x] * Line 83
+- [x] * Line 170 Actual: 14400087 Expected: 1440ffdd
+- [x] * Solution: Make sure that the PC is incremented by 4 in encode and added to the "PC"
+        * All instruction. Branch and Jump last. 
+        * test -e b and -b 0
+        * Test -a and -d
