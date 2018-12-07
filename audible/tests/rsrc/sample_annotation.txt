@@ -1,0 +1,1 @@
+echo "bin/audible -c -k DeadBeef" > sample_annotation.bin

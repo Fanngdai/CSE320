@@ -1,0 +1,16 @@
+Successfully forked as daemon
+17 Nov 2018 23:38:08: PID file: spool/alice.pid
+17 Nov 2018 23:38:09: Accepted connection, fd = 5
+17 Nov 2018 23:38:14: Created stream for input
+17 Nov 2018 23:38:14: File type is 'txt'
+17 Nov 2018 23:38:14: Saving data to file spool/alice_txt_1542515894.371115
+17 Nov 2018 23:38:14: Created stream for output
+17 Nov 2018 23:38:14: Bytes received: 7
+17 Nov 2018 23:38:14: Connection terminated
+17 Nov 2018 23:41:08: Accepted connection, fd = 5
+17 Nov 2018 23:41:13: Created stream for input
+17 Nov 2018 23:41:13: File type is 'txt'
+17 Nov 2018 23:41:13: Saving data to file spool/alice_txt_1542516073.296830
+17 Nov 2018 23:41:13: Created stream for output
+17 Nov 2018 23:41:13: Bytes received: 7
+17 Nov 2018 23:41:13: Connection terminated
