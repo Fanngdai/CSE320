@@ -44,7 +44,7 @@ int main(int argc, char* argv[]){
     struct sockaddr_storage clientaddr;
     pthread_t tid;
 
-    if((listenfd = Open_listenfd(argv[2])) < 0) { terminate(EXIT_FAILURE); }
+    if((listenfd = Open_listenfd(port)) < 0) { terminate(EXIT_FAILURE); }
 
     while(1) {
         connfdp = Calloc(sizeof(int), sizeof(char));
@@ -52,6 +52,7 @@ int main(int argc, char* argv[]){
 
         if(*connfdp < 0) {
             Free(connfdp);
+            connfdp = NULL;
             terminate(EXIT_FAILURE);
         }
 

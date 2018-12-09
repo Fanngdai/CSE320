@@ -23,14 +23,15 @@ CLIENT_REGISTRY *client_registry;
  * Invoked as the thread function for a thread that is created to
  * service a client connection.
  *
- * @param  Pointer to a variable that holds the file descriptor for
- * the client connection.  This pointer must be freed once the file
- * descriptor has been retrieved.
+ * @param       Pointer to a variable that holds the file descriptor for
+ *              the client connection.  This pointer must be freed once
+ *              the file descriptor has been retrieved.
  */
 void *xacto_client_service(void *arg) {
     int fd = *((int *)arg);
     Pthread_detach(pthread_self());
     Free(arg);
+    arg = NULL;
 
     debug("[%d] Starting client service", fd);
 
@@ -70,17 +71,19 @@ void *xacto_client_service(void *arg) {
                 case XACTO_COMMIT_PKT:
                     debug("[%d] COMMIT packet received", fd);
 
+                    int status = trans_commit(tp);
                     // int fd, XACTO_PACKET *pkt, int type, int status, BLOB *bp
-                    if(reply(fd, pkt, XACTO_REPLY_PKT, trans_commit(tp), NULL) == -1) {
+                    if(status == TRANS_ABORTED) {
+                        reply(fd, pkt, XACTO_REPLY_PKT, TRANS_ABORTED, NULL);
+                    } else if(reply(fd, pkt, XACTO_REPLY_PKT, status, NULL) == -1){
                         abort_end(fd, tp, pkt, &endloop);
                     } else {
                         store_show();
                         trans_show_all();
                     }
 
+
                     endloop = 0;
-
-
                     break;
                 default:
                     debug("[%d] Ending client service", fd);
@@ -105,9 +108,15 @@ void *xacto_client_service(void *arg) {
 int reply(int fd, XACTO_PACKET *pkt, int type, int status, BLOB *bp) {
     pkt->type = type;
     pkt->status = status;
-    pkt->size = bp?bp->size:0;
+    pkt->size = (bp&&type!=XACTO_REPLY_PKT)?bp->size:0;
+    pkt->null = (bp||type==XACTO_REPLY_PKT)?0:1;
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    pkt->timestamp_sec = time.tv_sec;
+    pkt->timestamp_nsec = time.tv_nsec;
     return proto_send_packet(fd, pkt, bp?bp->content:NULL);
 }
+
 
 
 void abort_end(int fd,TRANSACTION *tp, XACTO_PACKET *pkt, int *end) {
@@ -193,30 +202,27 @@ void xacto_get_pkt(int fd, TRANSACTION *tp, XACTO_PACKET *pkt, int *end) {
         return;
     }
 
+    if(reply(fd, pkt, XACTO_REPLY_PKT, TRANS_PENDING, bp1) == -1) {
+        abort_end(fd, tp, pkt1, end);
+        free_pkt_void(pkt1, key);
+        return;
+    }
+
     // if there is a value associated with the key
     if(bp1 && bp1->content) {
         debug("[%d] Value is %p [%d]", fd, pkt1, pkt1->size);
         blob_unref(bp1, "obtained from store_get");
 
         // sends a reply packet
-        if(reply(fd, pkt, XACTO_REPLY_PKT, TRANS_PENDING, NULL) == -1) {
-            abort_end(fd, tp, pkt1, end);
-            free_pkt_void(pkt1, key);
-            return;
-        } else if(reply(fd, pkt1, XACTO_DATA_PKT, TRANS_PENDING, bp1) == -1) {
+         if(reply(fd, pkt1, XACTO_DATA_PKT, TRANS_PENDING, bp1) == -1) {
             abort_end(fd, tp, pkt1, end);
             free_pkt_void(pkt1, key);
             return;
         }
     } else {
         debug("[%d] Value is NULL", fd);
-
         // sends a reply packet
-        if(reply(fd, pkt1, XACTO_REPLY_PKT, TRANS_PENDING, NULL) == -1) {
-            abort_end(fd, tp, pkt1, end);
-            free_pkt_void(pkt1, key);
-            return;
-        } else if(reply(fd, pkt, XACTO_DATA_PKT, TRANS_PENDING, bp1) == -1) {
+        if(reply(fd, pkt, XACTO_DATA_PKT, TRANS_PENDING, bp1) == -1) {
             abort_end(fd, tp, pkt1, end);
             free_pkt_void(pkt1, key);
             return;

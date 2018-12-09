@@ -20,7 +20,6 @@
  */
 int proto_send_packet(int fd, XACTO_PACKET *pkt, void *data) {
     uint32_t old_size = data?pkt->size:0;
-    pkt->null = data?0:1;
 
     // Convert any multi-byte fields to network byte order
     pkt->size = htonl(pkt->size);
@@ -47,7 +46,7 @@ int proto_send_packet(int fd, XACTO_PACKET *pkt, void *data) {
  * @param datap     Pointer to variable into which to store a pointer
  *                  to any payload received.
  *
- * @return  0       In case of successful reception, -1 otherwise.  In
+ * @return          0 In case of successful reception, -1 otherwise.  In
  *                  the latter case, errno is set to indicate the error.
  *
  * If the returned payload pointer is non-NULL, then the caller assumes
@@ -69,11 +68,11 @@ int proto_recv_packet(int fd, XACTO_PACKET *pkt, void **datap) {
         char *temp = Calloc(pkt->size, sizeof(char));
         if(rio_readn(fd, temp, pkt->size) <= 0) {
             Free(temp);
+            temp = NULL;
             return -1;
         }
         *datap = temp;
     }
 
-    // debug("EOF on fd: %d", fd);
     return 0;
 }

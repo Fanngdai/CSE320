@@ -29,7 +29,7 @@ typedef struct client_registry {
 /*
  * Initialize a new client registry.
  *
- * @return  the newly initialized client registry.
+ * @return      The newly initialized client registry.
  */
 CLIENT_REGISTRY *creg_init() {
     debug("Initialize client registry");
@@ -40,6 +40,7 @@ CLIENT_REGISTRY *creg_init() {
         if(pthread_mutex_init(&cr->mutex, NULL) < 0
             || sem_init(&cr->sem, 0, 0) < 0) {
             Free(cr);
+            cr = NULL;
             return NULL;
         }
         // Set file descriptors to zero
@@ -50,23 +51,25 @@ CLIENT_REGISTRY *creg_init() {
 }
 
 
-/* Finalize a client registry.
+/*
+ * Finalize a client registry.
  *
- * @param cr  The client registry to be finalized, which must not
- * be referenced again.
+ * @param cr    The client registry to be finalized, which must not
+ *              be referenced again.
  */
 void creg_fini(CLIENT_REGISTRY *cr) {
     if(!cr) return;
     pthread_mutex_destroy(&cr->mutex);
     sem_destroy(&cr->sem);
     Free(cr);
+    cr = NULL;
 }
 
 /*
  * Register a client file descriptor.
  *
- * @param cr  The client registry.
- * @param fd  The file descriptor to be registered.
+ * @param cr    The client registry.
+ * @param fd    The file descriptor to be registered.
  */
 void creg_register(CLIENT_REGISTRY *cr, int fd) {
     if(!cr || pthread_mutex_lock(&cr->mutex) < 0)  return;
@@ -82,12 +85,12 @@ void creg_register(CLIENT_REGISTRY *cr, int fd) {
  * Unregister a client file descriptor, alerting anybody waiting
  * for the registered set to become empty.
  *
- * @param cr  The client registry.
- * @param fd  The file descriptor to be unregistered.
+ * @param cr    The client registry.
+ * @param fd    The file descriptor to be unregistered.
  */
 void creg_unregister(CLIENT_REGISTRY *cr, int fd) {
     if(!cr || pthread_mutex_lock(&cr->mutex) < 0) return;
-    debug("Unregister client %d (total connected: %d)", fd, cr->val);
+    if(cr->val) debug("Unregister client %d (total connected: %d)", fd, cr->val);
 
     cr->val--;
     FD_CLR(fd, &cr->fds);
@@ -101,7 +104,7 @@ void creg_unregister(CLIENT_REGISTRY *cr, int fd) {
  * the number of registered clients has reached zero, at which
  * point the function will return.
  *
- * @param cr  The client registry.
+ * @param cr    The client registry.
  */
 void creg_wait_for_empty(CLIENT_REGISTRY *cr) {
     if(!cr) return;
@@ -112,7 +115,7 @@ void creg_wait_for_empty(CLIENT_REGISTRY *cr) {
 /*
  * Shut down all the currently registered client file descriptors.
  *
- * @param cr  The client registry.
+ * @param cr    The client registry.
  */
 void creg_shutdown_all(CLIENT_REGISTRY *cr) {
     if(!cr) return;

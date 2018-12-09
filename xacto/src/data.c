@@ -18,13 +18,14 @@
  * @return          The new blob, which has reference count 1.
  */
 BLOB *blob_create(char *content, size_t size) {
-    if(!content || size < 0) return NULL;
+    if(size < 0) return NULL;
     BLOB *bp = Calloc(sizeof(BLOB), sizeof(char));
 
     if(!bp) {
         return NULL;
     } else if(pthread_mutex_init(&bp->mutex, NULL) < 0) {
         Free(bp);
+        bp = NULL;
         return NULL;
     }
 
@@ -33,7 +34,7 @@ BLOB *blob_create(char *content, size_t size) {
         bp->content = Calloc(size+1, sizeof(char));
         memcpy(bp->content, content, size);
         bp->prefix = bp->content;
-        debug("Create blob with content %p, size %lu -> %p", bp->content, size, bp);
+        if(bp->content) debug("Create blob with content %p, size %lu -> %p", bp->content, size, bp);
     }
     bp->size = size;
 
@@ -52,7 +53,7 @@ BLOB *blob_ref(BLOB *bp, char *why) {
     if(!bp || pthread_mutex_lock(&bp->mutex) < 0) return NULL;
 
     bp->refcnt++;
-    debug("Increase reference count on blob %p [%s] (%d -> %d) %s", bp, bp->content, bp->refcnt, bp->refcnt, why);
+    if(bp->content) debug("Increase reference count on blob %p [%s] (%d -> %d) %s", bp, bp->content, bp->refcnt, bp->refcnt, why);
 
     if(pthread_mutex_unlock(&bp->mutex) < 0) return NULL;
     return bp;
@@ -69,11 +70,12 @@ void blob_unref(BLOB *bp, char *why) {
     if(!bp || pthread_mutex_lock(&bp->mutex) < 0) return;
 
     bp->refcnt--;
-    debug("Decrease reference count on blob %p [%s] (%d -> %d) %s", bp, bp->content, bp->refcnt+1, bp->refcnt, why);
+    if(bp->content) debug("Decrease reference count on blob %p [%s] (%d -> %d) %s", bp, bp->content, bp->refcnt+1, bp->refcnt, why);
     if(bp->refcnt == 0) {
         if(bp->content) {
             debug("Free blob %p [%s]", bp, bp->content);
             Free(bp->content);
+            bp->content = NULL;
         }
         Free(bp);
         bp=NULL;
@@ -85,10 +87,10 @@ void blob_unref(BLOB *bp, char *why) {
 /*
  * Compare two blobs for equality of their content.
  *
- * @param bp1       The first blob.
- * @param bp2       The second blob.
+ * @param bp1   The first blob.
+ * @param bp2   The second blob.
  *
- * @return 0 if the blobs have equal content, nonzero otherwise.
+ * @return      0 if the blobs have equal content, nonzero otherwise.
  */
 int blob_compare(BLOB *bp1, BLOB *bp2) {
     if(pthread_mutex_lock(&bp1->mutex) < 0 || pthread_mutex_lock(&bp2->mutex) < 0)
@@ -106,13 +108,13 @@ int blob_compare(BLOB *bp1, BLOB *bp2) {
 /*
  * Hash function for hashing the content of a blob.
  *
- * @param bp        The blob.
+ * @param bp    The blob.
  *
- * @return          Hash of the blob.
+ * @return      Hash of the blob.
  */
 int blob_hash(BLOB *bp) {
     if(!bp) return -1;
-    return *(bp->content)%NUM_BUCKETS;
+    return bp->content ? *(bp->content)%NUM_BUCKETS : 0;
     // int rtn = 0;
     // for(int i=0; i<bp->size; i++) {
     //     rtn += *bp->content++;
@@ -124,9 +126,8 @@ int blob_hash(BLOB *bp) {
  * Create a key from a blob.
  * The key inherits the caller's reference to the blob.
  *
- * @param bp        The blob.
- *
- * @return          The newly created key.
+ * @param bp    The blob.
+ * @return      The newly created key.
  */
 KEY *key_create(BLOB *bp) {
     if(!bp) return NULL;
@@ -145,11 +146,11 @@ KEY *key_create(BLOB *bp) {
  * A key must be disposed of only once and must not be referred to again
  * after it has been disposed.
  *
- * @param kp        The key.
+ * @param kp    The key.
  */
 void key_dispose(KEY *kp) {
     if(!kp) return;
-    debug("Dispose of key %p [%s]", kp, kp->blob->content);
+    if(kp->blob->content) debug("Dispose of key %p [%s]", kp, kp->blob->content);
 
     blob_unref(kp->blob, NULL);
 
@@ -208,9 +209,9 @@ int key_compare(KEY *kp1, KEY *kp2) {
 VERSION *version_create(TRANSACTION *tp, BLOB *bp) {
     if(!tp) tp = trans_create();
 
-    if(bp) {
+    if(bp && bp->content) {
         debug("Create version of blob %p [%s] for transaction %d -> %p", bp, bp->content, tp->id, tp );
-    } else {
+    } else if(!bp) {
         debug("Create NULL version for transaction %d -> %p", tp->id, tp );
     }
 
